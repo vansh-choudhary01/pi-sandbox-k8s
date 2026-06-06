@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pi-sandbox
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sandbox-runner
+  namespace: pi-sandbox
+spec:
+  serviceName: sandbox-runner
+  replicas: 8
+
+  selector:
+    matchLabels:
+      app: sandbox-runner
+
+  template:
+    metadata:
+      labels:
+        app: sandbox-runner
+
+    spec:
+      # Sandboxes do not need access to the Kubernetes API.
+      automountServiceAccountToken: false
+
+      containers:
+        - name: runner
+
+          # Simple image containing a shell and common Linux tools.
+          image: node:22-alpine
+
+          # Keep the warm sandbox alive, waiting for exec commands.
+          command: ["sh", "-c", "mkdir -p /workspace && sleep infinity"]
+
+          workingDir: /workspace
+
+          # Prevent a tool call from consuming unlimited resources.
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          # Writable temporary workspace unique to each pod.
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+      volumes:
+        - name: workspace
+          emptyDir: {}
