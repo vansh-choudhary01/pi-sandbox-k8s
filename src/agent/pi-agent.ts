@@ -2,134 +2,117 @@ import { Agent } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
 
 import type { SandboxExecutor } from "../sandbox/executor";
-import { createSandboxCommandTool } from "./tools";
+import {
+    createSandboxCommandTool,
+    type SandboxCommandDetails,
+} from "./tools";
 
 export interface PiAgentOptions {
-    /** Pi provider name, for example anthropic or openai. */
     provider: string;
-
-    /** Model ID available under the selected provider. */
     model: string;
-
-    /** Provider API key used for LLM requests. */
     apiKey: string;
 }
 
 /**
- * Creates one Pi agent with our Kubernetes sandbox tool registered.
- *
- * The LLM runs in this backend process, while only tool commands run
- * inside leased Kubernetes pods.
+ * Details about one tool execution performed during an agent request.
  */
+export interface ToolExecutionTrace {
+    toolName: string;
+    toolCallId: string;
+    arguments: unknown;
+    result?: SandboxCommandDetails;
+    isError: boolean;
+}
+
+/**
+ * Complete result returned from one Pi agent request.
+ */
+export interface AgentChatResult {
+    answer: string;
+    tools: ToolExecutionTrace[];
+}
+
 export function createPiAgent(
     executor: SandboxExecutor,
     options: PiAgentOptions,
 ): Agent {
     const sandboxTool = createSandboxCommandTool(executor);
 
-    const agent = new Agent({
+    return new Agent({
         initialState: {
             systemPrompt: [
                 "You are a helpful coding assistant.",
-                "Answer normally when no command execution is required.",
-                "Use run_in_sandbox when you need to run code or shell commands.",
-                "Never claim a command succeeded unless you used the tool.",
+                "Answer normally when command execution is unnecessary.",
+                "Use run_in_sandbox when you need to execute or test code.",
+                "Never claim that a command succeeded unless the tool confirms it.",
             ].join("\n"),
 
-            // Resolve the model definition from Pi's built-in model registry.
             model: getModel(
                 options.provider as Parameters<typeof getModel>[0],
                 options.model as never,
             ),
 
-            // The only tool available to the agent currently.
             tools: [sandboxTool],
-
             messages: [],
-
-            // Disable extended reasoning for this initial version.
             thinkingLevel: "off",
         },
 
-        /**
-         * Pi calls this whenever the selected provider needs authentication.
-         * Later this can refresh OAuth credentials instead of returning one key.
-         */
         getApiKey: async () => options.apiKey,
 
-        /**
-         * Multiple independent tool calls may run in parallel.
-         * Each call will acquire a different available sandbox pod.
-         */
+        // Independent tool calls can use separate leased pods concurrently.
         toolExecution: "parallel",
     });
-
-    /**
-   * Subscribe to Pi's agent lifecycle events so we can observe:
-   * LLM turns, tool calls, sandbox results and failures.
-   */
-    agent.subscribe((event) => {
-        switch (event.type) {
-            case "agent_start":
-                console.log("\n[Agent] Started");
-                break;
-
-            case "turn_start":
-                console.log("[Agent] New LLM turn");
-                break;
-
-            case "tool_execution_start":
-                console.log("\n[Tool] Starting");
-                console.log("Name:", event.toolName);
-                console.log("Call ID:", event.toolCallId);
-                console.log("Arguments:", event.args);
-                break;
-
-            case "tool_execution_update":
-                console.log("[Tool] Progress:", event.partialResult);
-                break;
-
-            case "tool_execution_end":
-                console.log("\n[Tool] Finished");
-                console.log("Name:", event.toolName);
-                console.log("Error:", event.isError);
-                console.dir(event.result, { depth: null });
-                break;
-
-            case "turn_end":
-                console.log("[Agent] Turn finished");
-                break;
-
-            case "agent_end":
-                console.log("[Agent] Finished\n");
-                break;
-        }
-    });
-
-    return agent;
 }
 
 /**
- * Send a message through the complete Pi agent loop.
- *
- * Pi automatically:
- * 1. Sends the user message to the LLM.
- * 2. Detects tool calls.
- * 3. Executes our sandbox tool.
- * 4. Sends the tool result back to the LLM.
- * 5. Produces the final assistant response.
+ * Runs one user message and collects both the final answer and tool traces.
  */
 export async function chatWithAgent(
     agent: Agent,
     message: string,
-): Promise<string> {
+): Promise<AgentChatResult> {
     if (!message.trim()) {
         throw new Error("Chat message cannot be empty");
     }
 
-    await agent.prompt(message);
+    const traces = new Map<string, ToolExecutionTrace>();
 
-    // Search backwards for the latest completed assistant message.
+    /**
+     * This subscription belongs only to this request because every request
+     * receives a fresh Agent instance.
+     */
+    const unsubscribe = agent.subscribe((event) => {
+        if (event.type === "tool_execution_start") {
+            traces.set(event.toolCallId, {
+                toolName: event.toolName,
+                toolCallId: event.toolCallId,
+                arguments: event.args,
+                isError: false,
+            });
+        }
+
+        if (event.type === "tool_execution_end") {
+            const existing = traces.get(event.toolCallId);
+
+            traces.set(event.toolCallId, {
+                toolName: event.toolName,
+                toolCallId: event.toolCallId,
+                arguments: existing?.arguments,
+                isError: event.isError,
+                result: event.result?.details as
+                    | SandboxCommandDetails
+                    | undefined,
+            });
+        }
+    });
+
+    try {
+        await agent.prompt(message);
+    } finally {
+        // Prevent event listeners from remaining after the request finishes.
+        unsubscribe();
+    }
+
     const assistantMessage = [...agent.state.messages]
         .reverse()
         .find((item) => item.role === "assistant");
@@ -138,11 +121,7 @@ export async function chatWithAgent(
         throw new Error("Pi agent did not return an assistant message");
     }
 
-    /**
-     * Assistant content can contain text, reasoning and tool calls.
-     * The HTTP response should return only normal text blocks.
-     */
-    return assistantMessage.content
+    const answer = assistantMessage.content
         .filter(
             (
                 block,
@@ -154,4 +133,9 @@ export async function chatWithAgent(
         .map((block) => block.text)
         .join("")
         .trim();
+
+    return {
+        answer,
+        tools: [...traces.values()],
+    };
 }
