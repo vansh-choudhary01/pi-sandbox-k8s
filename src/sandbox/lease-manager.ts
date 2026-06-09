@@ -7,6 +7,11 @@ import {
   type LeaseBackend,
   type LeaseRecord,
 } from "./types";
+import type {
+  LeaseAcquireContext,
+  QueueSnapshot,
+  RuntimeTelemetry,
+} from "../telemetry";
 
 export interface LeaseManagerOptions {
   /** Stable names of all sandbox pods in the pool. */
@@ -23,6 +28,12 @@ export interface LeaseManagerOptions {
 
   /** How often the queue checks Kubernetes for a newly available pod. */
   retryIntervalMs?: number;
+}
+
+interface LocalQueueEntry extends LeaseAcquireContext {
+  id: string;
+  queuedAt: string;
+  turnStartedAt?: string;
 }
 
 /**
@@ -45,16 +56,20 @@ export class LeaseManager {
    * resourceVersion still protects against races with other API replicas.
    */
   private queueTail: Promise<void> = Promise.resolve();
+  private readonly waitingQueue = new Map<string, LocalQueueEntry>();
+  private readonly acquiringQueue = new Map<string, LocalQueueEntry>();
 
   constructor(
     private readonly backend: LeaseBackend,
     private readonly options: LeaseManagerOptions,
+    private readonly telemetry?: RuntimeTelemetry,
   ) {
     if (options.podNames.length === 0) {
       throw new Error("LeaseManager requires at least one sandbox pod");
     }
 
     this.retryIntervalMs = options.retryIntervalMs ?? 200;
+    this.publishQueueSnapshot();
   }
 
   /**
@@ -92,13 +107,29 @@ export class LeaseManager {
     }
   }
 
+  async inspectLeases(): Promise<Array<LeaseRecord | undefined>> {
+    return Promise.all(
+      this.options.podNames.map((podName) => this.backend.get(podName)),
+    );
+  }
+
   /**
    * Wait for this caller's FIFO turn, then acquire a sandbox pod.
    *
    * The returned release() function must be called in a finally block.
    */
-  async acquire(): Promise<AcquiredLease> {
+  async acquire(context: LeaseAcquireContext = {}): Promise<AcquiredLease> {
     const previousCaller = this.queueTail;
+    const queueEntry: LocalQueueEntry = {
+      id:
+        context.toolCallId ??
+        `${context.requestId ?? "request"}-${Date.now()}-${Math.random()}`,
+      ...context,
+      queuedAt: new Date().toISOString(),
+    };
+
+    this.waitingQueue.set(queueEntry.id, queueEntry);
+    this.publishQueueSnapshot();
 
     // This promise represents the current caller's place in the local queue.
     let finishTurn!: () => void;
@@ -109,6 +140,12 @@ export class LeaseManager {
 
     // Wait until every earlier caller in this process has acquired or failed.
     await previousCaller;
+    this.waitingQueue.delete(queueEntry.id);
+    this.acquiringQueue.set(queueEntry.id, {
+      ...queueEntry,
+      turnStartedAt: new Date().toISOString(),
+    });
+    this.publishQueueSnapshot();
 
     try {
       return await this.acquireBeforeDeadline();
@@ -119,6 +156,8 @@ export class LeaseManager {
        * caller's tool execution to finish.
        */
       finishTurn();
+      this.acquiringQueue.delete(queueEntry.id);
+      this.publishQueueSnapshot();
     }
   }
 
@@ -309,5 +348,29 @@ export class LeaseManager {
     return new Promise((resolve) => {
       setTimeout(resolve, milliseconds);
     });
+  }
+
+  private publishQueueSnapshot(): void {
+    const snapshot: QueueSnapshot = {
+      waiting: [...this.waitingQueue.values()].map((entry) => ({
+        requestId: entry.requestId,
+        toolCallId: entry.toolCallId,
+        toolName: entry.toolName,
+        command: entry.command,
+        queuedAt: entry.queuedAt,
+      })),
+      acquiring: [...this.acquiringQueue.values()].map((entry) => ({
+        requestId: entry.requestId,
+        toolCallId: entry.toolCallId,
+        toolName: entry.toolName,
+        command: entry.command,
+        queuedAt: entry.queuedAt,
+        turnStartedAt: entry.turnStartedAt ?? entry.queuedAt,
+      })),
+      retryIntervalMs: this.retryIntervalMs,
+      queueMaxWaitMs: this.options.queueMaxWaitMs,
+    };
+
+    this.telemetry?.queueChanged(snapshot);
   }
 }

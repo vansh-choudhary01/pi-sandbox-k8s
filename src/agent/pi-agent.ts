@@ -2,6 +2,7 @@ import { Agent } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
 
 import type { SandboxExecutor } from "../sandbox/executor";
+import type { RuntimeTelemetry } from "../telemetry";
 import {
     createSandboxCommandTool,
     type SandboxCommandDetails,
@@ -11,6 +12,8 @@ export interface PiAgentOptions {
     provider: string;
     model: string;
     apiKey: string;
+    requestId?: string;
+    telemetry?: RuntimeTelemetry;
 }
 
 /**
@@ -36,7 +39,9 @@ export function createPiAgent(
     executor: SandboxExecutor,
     options: PiAgentOptions,
 ): Agent {
-    const sandboxTool = createSandboxCommandTool(executor);
+    const sandboxTool = createSandboxCommandTool(executor, {
+        requestId: options.requestId,
+    });
 
     return new Agent({
         initialState: {
@@ -70,6 +75,10 @@ export function createPiAgent(
 export async function chatWithAgent(
     agent: Agent,
     message: string,
+    trace?: {
+        requestId: string;
+        telemetry: RuntimeTelemetry;
+    },
 ): Promise<AgentChatResult> {
     if (!message.trim()) {
         throw new Error("Chat message cannot be empty");
@@ -89,6 +98,13 @@ export async function chatWithAgent(
                 arguments: event.args,
                 isError: false,
             });
+
+            trace?.telemetry.toolStarted(
+                trace.requestId,
+                event.toolCallId,
+                event.toolName,
+                event.args,
+            );
         }
 
         if (event.type === "tool_execution_end") {

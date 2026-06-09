@@ -3,6 +3,8 @@ import type { Exec, V1Status } from "@kubernetes/client-node";
 
 import type { Config } from "../config";
 import type { LeaseManager } from "./lease-manager";
+import type { LeaseAcquireContext, RuntimeTelemetry } from "../telemetry";
+import type { AcquiredLease } from "./types";
 
 /**
  * Input accepted by the sandbox executor.
@@ -19,6 +21,9 @@ export interface ExecuteCommandInput {
 
     /** Optional custom timeout for this command. */
     timeoutMs?: number;
+
+    /** Request/tool metadata used only for real-time telemetry. */
+    trace?: LeaseAcquireContext;
 }
 
 /**
@@ -58,6 +63,7 @@ export class SandboxExecutor {
             Config,
             "namespace" | "container" | "workdir" | "toolTimeoutMs"
         >,
+        private readonly telemetry?: RuntimeTelemetry,
     ) { }
 
     async execute(
@@ -65,14 +71,31 @@ export class SandboxExecutor {
     ): Promise<ExecuteCommandResult> {
         console.log("[Sandbox] Waiting for a free pod...");
 
-        const lease = await this.leaseManager.acquire();
+        const trace: LeaseAcquireContext = {
+            ...input.trace,
+            command: input.command,
+        };
+        const workdir = input.workdir ?? this.config.workdir;
 
-        console.log(`[Sandbox] Acquired pod: ${lease.podName}`);
-        console.log(`[Sandbox] Command: ${input.command}`);
+        this.telemetry?.toolWaiting({
+            ...trace,
+            workdir,
+        });
 
+        let lease: AcquiredLease | undefined;
         const startedAt = Date.now();
 
         try {
+            lease = await this.leaseManager.acquire(trace);
+
+            console.log(`[Sandbox] Acquired pod: ${lease.podName}`);
+            console.log(`[Sandbox] Command: ${input.command}`);
+            this.telemetry?.toolAcquired({
+                ...trace,
+                podName: lease.podName,
+                holderIdentity: lease.holderIdentity,
+            });
+
             const result = await this.executeInsidePod(
                 lease.podName,
                 input,
@@ -81,11 +104,28 @@ export class SandboxExecutor {
 
             console.log(`[Sandbox] Exit code: ${result.exitCode}`);
             console.log(`[Sandbox] Duration: ${result.durationMs}ms`);
+            this.telemetry?.toolCompleted(trace.toolCallId, result);
 
             return result;
+        } catch (error) {
+            this.telemetry?.toolFailed(
+                {
+                    ...trace,
+                    toolName: trace.toolName ?? "run_in_sandbox",
+                },
+                error instanceof Error ? error.message : "Unknown tool error",
+            );
+
+            throw error;
         } finally {
-            await lease.release();
-            console.log(`[Sandbox] Released pod: ${lease.podName}`);
+            if (lease) {
+                await lease.release();
+                console.log(`[Sandbox] Released pod: ${lease.podName}`);
+                this.telemetry?.podReleased({
+                    ...trace,
+                    podName: lease.podName,
+                });
+            }
         }
     }
 

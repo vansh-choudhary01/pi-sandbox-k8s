@@ -7,9 +7,12 @@ import { LeaseManager } from "./sandbox/lease-manager";
 import { SandboxExecutor } from "./sandbox/executor";
 import { createPiAgent } from "./agent/pi-agent";
 import { createServer } from "./server";
+import { RuntimeTelemetry } from "./telemetry";
 
 const config = loadConfig();
 const kubernetes = createKubernetesClients();
+const sandboxPodNames = podNames(config);
+const telemetry = new RuntimeTelemetry(sandboxPodNames);
 
 const leaseBackend = new K8sLeaseBackend(
   kubernetes.coordinationApi,
@@ -17,11 +20,11 @@ const leaseBackend = new K8sLeaseBackend(
 );
 
 const leaseManager = new LeaseManager(leaseBackend, {
-  podNames: podNames(config),
+  podNames: sandboxPodNames,
   serviceInstanceId: config.serviceInstanceId,
   queueMaxWaitMs: config.queueMaxWaitMs,
   leaseTtlSeconds: config.leaseTtlSeconds,
-});
+}, telemetry);
 
 await leaseManager.initialize();
 
@@ -29,6 +32,7 @@ const sandboxExecutor = new SandboxExecutor(
   kubernetes.exec,
   leaseManager,
   config,
+  telemetry,
 );
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -43,14 +47,19 @@ if (!apiKey) {
  * The expensive Kubernetes clients and sandbox executor are shared,
  * but mutable conversation history is isolated per request.
  */
-const createAgent = () =>
+const createAgent = (requestId: string) =>
   createPiAgent(sandboxExecutor, {
     provider: process.env.PI_PROVIDER ?? "google",
     model: process.env.PI_MODEL ?? "gemini-2.5-flash",
     apiKey,
+    requestId,
+    telemetry,
   });
 
-const app = createServer(createAgent);
+const app = createServer(createAgent, {
+  leaseManager,
+  telemetry,
+});
 
 /**
  * Start the HTTP server only after Kubernetes clients and Lease objects
@@ -62,4 +71,5 @@ serve({
 });
 
 console.log(`Server running at http://localhost:${config.port}`);
+console.log(`Dashboard http://localhost:${config.port}/`);
 console.log(`POST http://localhost:${config.port}/chat`);

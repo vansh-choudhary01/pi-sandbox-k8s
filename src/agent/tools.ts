@@ -2,6 +2,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 
 import type { SandboxExecutor } from "../sandbox/executor";
+import type { LeaseAcquireContext } from "../telemetry";
 
 /**
  * Schema describing the arguments the LLM may provide.
@@ -48,6 +49,7 @@ export interface SandboxCommandDetails {
  */
 export function createSandboxCommandTool(
   executor: SandboxExecutor,
+  trace?: Pick<LeaseAcquireContext, "requestId">,
 ): AgentTool<
   typeof sandboxCommandParameters,
   SandboxCommandDetails
@@ -80,6 +82,11 @@ export function createSandboxCommandTool(
       const result = await executor.execute({
         command: params.command,
         workdir: params.workdir,
+        trace: {
+          ...trace,
+          toolName: "run_in_sandbox",
+          toolCallId: _toolCallId,
+        },
       });
 
       /**
