@@ -1,6 +1,6 @@
 # Pi Agent with Kubernetes-Leased Sandbox Execution
 
-A TypeScript backend that runs a chat agent on the **Pi TypeScript SDK**. The
+A TypeScript backend that runs a chat agent on the **Pi TypeScript SDK** backed by **Google Gemini**. The
 agent answers normally, but whenever it calls a tool, that tool executes **inside
 a Kubernetes sandbox pod**. The service owns a fixed pool of **8 warm pods**.
 Pods are not assigned to users or sessions; a pod is **leased just-in-time** for
@@ -28,7 +28,7 @@ POST /chat ──> Pi agent loop ──> tool call ──> [ lease a free pod ]
 1. [Architecture](#architecture)
 2. [Prerequisites](#prerequisites)
 3. [Quick start](#quick-start)
-4. [Configure Pi credentials](#configure-pi-credentials)
+4. [Configure credentials](#configure-credentials)
 5. [Run locally](#run-the-api-service)
 6. [Call `/chat` with curl](#calling-chat)
 7. [Endpoints](#endpoints)
@@ -36,11 +36,10 @@ POST /chat ──> Pi agent loop ──> tool call ──> [ lease a free pod ]
 9. [FIFO queue & max wait](#the-fifo-queue--max-wait)
 10. [Timeouts & cleanup](#timeouts--cleanup)
 11. [9 concurrent tool calls example](#example-9-concurrent-tool-calls)
-12. [Tools](#tools)
-13. [Tests](#tests)
-14. [Security](#security)
-15. [Exec vs in-pod HTTP runner](#tradeoff-podsexec-vs-in-pod-http-runner)
-16. [Production notes](#production-notes)
+12. [Tool](#tool)
+13. [Security](#security)
+14. [Exec vs in-pod HTTP runner](#tradeoff-podsexec-vs-in-pod-http-runner)
+15. [Production notes](#production-notes)
 
 ---
 
@@ -49,38 +48,28 @@ POST /chat ──> Pi agent loop ──> tool call ──> [ lease a free pod ]
 ```
 src/
   index.ts              Entrypoint: load config, wire everything, start HTTP server
-  config.ts             Validated config; fails fast if Pi credentials are missing
-  logger.ts             Structured JSON logger + canonical event names
-  ids.ts                Request id + Lease holderIdentity encode/decode
-  server.ts             Express app: POST /chat, GET /pods, GET /health
-  poolState.ts          Builds GET /pods payload (readiness + lease status)
-  k8s/
+  config.ts             Validated config + podNames helper; reads env vars with safe defaults
+  server.ts             Hono app: POST /chat, GET /health, GET /api/telemetry, GET /
+  telemetry.ts          RuntimeTelemetry: tracks requests, tool calls, pod state, queue, events
+  dashboard.ts          Renders the live HTML dashboard served at GET /
+  kubernetes/
     client.ts           KubeConfig + CoreV1Api / CoordinationV1Api / Exec
-    types.ts            LeaseBackend / PodExecutor / PodReader interfaces (the seams)
-    leaseBackend.ts     Real Lease CRUD with optimistic concurrency (409 -> ConflictError)
-    podExec.ts          pods/exec wrapper + pod readiness reader
+    sandbox-pool.yaml   StatefulSet (8 pods) + Leases manifest
   sandbox/
-    leaseManager.ts     ★ Just-in-time leasing, FIFO queue, TTL/expiry recovery
-    errors.ts           CapacityTimeoutError (sandbox_capacity_timeout), CancelledError
-  tools/
-    index.ts            shell.run, fs.read, env.inspect as Pi AgentTools
-    runInSandbox.ts     Lease -> exec -> release lifecycle for every tool call
-    security.ts         Command allowlist + path-traversal guard
-    context.ts          Per-request tool context + tool-call recorder
-  pi/
-    types.ts            PiClient interface, ChatInput, ChatResult (the abstraction)
-    realPiClient.ts     RealPiClient backed by the real Pi SDK Agent loop
-k8s/                    Namespace, RBAC, StatefulSet (8 pods), Leases, API Deployment
-scripts/                kind-up, deploy, create-leases, load-9
-test/unit/              Fast tests with an in-memory Lease backend (no cluster)
-test/integration/       Real-cluster tests + the Pi-backed smoke test
+    types.ts            LeaseRecord, LeaseBackend interface, ConflictError, NotFoundError, AcquiredLease
+    lease-backend.ts    K8sLeaseBackend: real Lease CRUD with optimistic concurrency (409 → ConflictError)
+    lease-manager.ts    ★ LeaseManager: just-in-time leasing, FIFO queue, TTL/expiry recovery
+    executor.ts         SandboxExecutor: lease → exec → release lifecycle for every tool call
+  agent/
+    pi-agent.ts         createPiAgent / chatWithAgent backed by the Pi SDK + Gemini
+    tools.ts            run_in_sandbox AgentTool: executes shell commands via SandboxExecutor
 ```
 
-The key design decision is the **`LeaseBackend` / `PodExecutor` seam**
-([src/k8s/types.ts](src/k8s/types.ts)): the lease/queue logic in
-[src/sandbox/leaseManager.ts](src/sandbox/leaseManager.ts) depends only on those
-interfaces, so the exact same logic runs against an in-memory fake (unit tests)
-and a real cluster (integration tests).
+The key design decision is the **`LeaseBackend` seam**
+([src/sandbox/types.ts](src/sandbox/types.ts)): the lease/queue logic in
+[src/sandbox/lease-manager.ts](src/sandbox/lease-manager.ts) depends only on that
+interface, so the same logic can run against an in-memory fake for testing
+or a real Kubernetes cluster in production.
 
 ---
 
@@ -99,17 +88,20 @@ and a real cluster (integration tests).
 # 1. Install deps
 npm install
 
-# 2. Create the local cluster + 8 sandbox pods + 8 leases
-npm run kind:up
+# 2. Create the local kind cluster
+npm run create-cluster
 
-# 3. Configure your Pi credential
+# 3. Deploy the sandbox pod pool
+npm run pods
+
+# 4. Configure your Pi credential
 cp .env.example .env
 #   then edit .env and set ANTHROPIC_API_KEY=sk-ant-...
 
-# 4. Run the API locally (it talks to the kind cluster via your kubeconfig)
-npm start
+# 5. Run the API locally (it talks to the kind cluster via your kubeconfig)
+npm run dev
 
-# 5. In another terminal
+# 6. In another terminal
 curl localhost:3000/health
 curl -s -X POST localhost:3000/chat -H 'Content-Type: application/json' \
   -d '{"sessionId":"s1","message":"List the files in the sandbox."}' | jq
@@ -117,74 +109,36 @@ curl -s -X POST localhost:3000/chat -H 'Content-Type: application/json' \
 
 ### How to create the local Kubernetes cluster
 
-`npm run kind:up` ([scripts/kind-up.sh](scripts/kind-up.sh)) creates a kind
-cluster named `pi-sandbox`, then applies the manifests and waits for all 8 pods.
+`npm run create-cluster` creates a kind cluster named `pi-sandbox-cluster` and waits up to 5 minutes for it to be ready.
 
-### How to apply manifests manually
+### How to deploy the sandbox pod pool
+
+`npm run pods` applies the sandbox manifest:
 
 ```bash
-kubectl apply -f k8s/00-namespace.yaml
-kubectl apply -f k8s/10-rbac.yaml
-kubectl apply -f k8s/20-sandbox-statefulset.yaml
-kubectl apply -f k8s/30-leases.yaml
-kubectl -n pi-sandbox rollout status statefulset/sandbox-runner
+kubectl apply -f src/kubernetes/sandbox-pool.yaml
 ```
 
 ---
 
-## Configure Pi credentials
+## Configure credentials
 
-The Pi SDK (`@earendil-works/pi-ai` + `@earendil-works/pi-agent-core`) drives the
-chat/agent loop and talks to an underlying LLM provider. There are **two ways**
-to supply credentials, and the service validates one of them at startup.
-
-**Option A — API key (env var):**
+The service uses the **Pi TypeScript SDK** (`@mariozechner/pi-ai` + `@mariozechner/pi-agent-core`) with **Google Gemini** as the LLM provider.
 
 ```bash
 cp .env.example .env
 # .env:
-PI_PROVIDER=anthropic
-PI_MODEL=claude-sonnet-4-5
-ANTHROPIC_API_KEY=sk-ant-...
-# (or PI_PROVIDER=openai / PI_MODEL=gpt-4o / OPENAI_API_KEY=...)
+GEMINI_API_KEY=your-gemini-api-key
+
+# Optional overrides (these are the defaults):
+PI_PROVIDER=google
+PI_MODEL=gemini-2.5-flash
 ```
 
-**Option B — Pi login (OAuth):** if you've signed in with the Pi CLI
-(`pi login`), the service reuses those stored credentials from
-`~/.pi/agent/auth.json` and **refreshes the token automatically** — no env key
-needed. Just point `PI_PROVIDER` at the logged-in provider:
+- **The service refuses to start if `GEMINI_API_KEY` is missing** — it throws immediately at startup.
+- `PI_PROVIDER` and `PI_MODEL` can be overridden via env vars; they default to `google` / `gemini-2.5-flash`.
 
-```bash
-# .env:
-PI_PROVIDER=openai-codex      # OpenAI ChatGPT login
-PI_MODEL=gpt-5.5
-```
-
-- Both modes are resolved and validated in [src/config.ts](src/config.ts) +
-  [src/pi/auth.ts](src/pi/auth.ts).
-- **The service refuses to start if no credential is available** for the
-  configured provider — you get a clear `startup.pi_auth_invalid` /
-  `startup.config_invalid` log line and a non-zero exit, not a runtime surprise
-  on the first request.
-- The Pi-backed path stays real in both modes; no mock is ever substituted.
-
-> Note on tool names: OpenAI requires function names to match `^[a-zA-Z0-9_-]+$`,
-> so the LLM-facing tool names use underscores (`shell_run`), while the
-> assignment's dotted names (`shell.run`) are what appear in the `/chat` response
-> and logs.
-
-The Pi integration lives behind a small abstraction so the rest of the code is
-not coupled to the SDK ([src/pi/types.ts](src/pi/types.ts)):
-
-```ts
-interface PiClient {
-  runChat(input: ChatInput): Promise<ChatResult>;
-}
-```
-
-`RealPiClient` ([src/pi/realPiClient.ts](src/pi/realPiClient.ts)) builds a Pi
-`Agent`, registers the three sandbox tools, runs one prompt turn, and returns the
-final assistant message plus per-tool metadata.
+The agent is created per-request in [src/agent/pi-agent.ts](src/agent/pi-agent.ts) via `createPiAgent`, which builds a Pi `Agent` with the `run_in_sandbox` tool and runs one prompt turn via `chatWithAgent`.
 
 ---
 
@@ -195,16 +149,7 @@ The simplest path runs the API **on your machine** against the kind cluster
 pods is needed):
 
 ```bash
-npm start          # or: npm run dev   (watch mode)
-```
-
-### Run the API in-cluster (optional)
-
-```bash
-npm run deploy     # builds the image, loads it into kind, creates the
-                   # pi-sandbox-secrets Secret from .env, deploys the API
-kubectl -n pi-sandbox port-forward svc/pi-sandbox-api 3000:80
-curl localhost:3000/health
+npm run dev
 ```
 
 ---
@@ -214,15 +159,21 @@ curl localhost:3000/health
 ```bash
 curl -s -X POST localhost:3000/chat \
   -H 'Content-Type: application/json' \
-  -d '{"sessionId":"session-123","message":"Use env.inspect and tell me the pod name and user."}' | jq
+  -d '{"message":"Print the current directory inside the sandbox."}' | jq
 ```
 
 ```json
 {
-  "sessionId": "session-123",
-  "message": "The sandbox runs as user 'node' on pod sandbox-runner-3 ...",
-  "toolCalls": [
-    { "toolCallId": "tc_01...", "tool": "env.inspect", "pod": "sandbox-runner-3", "status": "completed" }
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "answer": "The current directory inside the sandbox is /workspace.",
+  "tools": [
+    {
+      "toolName": "run_in_sandbox",
+      "toolCallId": "tc_01...",
+      "arguments": { "command": "pwd" },
+      "result": { "podName": "sandbox-runner-3", "exitCode": 0, "durationMs": 312, "stdout": "/workspace\n", "stderr": "" },
+      "isError": false
+    }
   ]
 }
 ```
@@ -231,17 +182,12 @@ curl -s -X POST localhost:3000/chat \
 
 ## Endpoints
 
-| Method | Path      | Description |
-| ------ | --------- | ----------- |
-| POST   | `/chat`   | Runs a chat turn. Accepts `{ sessionId, message }`, generates a request id, routes every tool call through the lease manager, returns the final assistant message + tool-call metadata. |
-| GET    | `/pods`   | Current pool state: each pod's readiness and lease status (`free` / `leased` with `holderIdentity` + `expiresAt`), plus current `queueDepth`. |
-| GET    | `/health` | `{ ok, kubernetes: "connected", sandboxPodsReady }`. Returns 503 if the cluster is unreachable. |
-
-Capacity timeouts return **HTTP 429** with the assignment's error shape:
-
-```json
-{ "error": { "code": "sandbox_capacity_timeout", "message": "No sandbox pod became available within 15 seconds." } }
-```
+| Method | Path              | Description |
+| ------ | ----------------- | ----------- |
+| POST   | `/chat`           | Runs a chat turn. Accepts `{ message }`, generates a `requestId`, routes every tool call through the lease manager, returns `{ requestId, answer, tools }`. |
+| GET    | `/api/telemetry`  | Live snapshot: pod lease states, queue depth, tracked requests, tool runs, and a rolling event log. Accepts `?since=<eventId>` for incremental polling. |
+| GET    | `/health`         | `{ status: "ok" }` |
+| GET    | `/`               | Live HTML dashboard (auto-polls `/api/telemetry` every 700 ms). |
 
 ---
 
@@ -257,10 +203,7 @@ is the lock source of truth.
   server returns **HTTP 409**; we treat that as a lost race
   ([ConflictError](src/k8s/types.ts)) and try a different lease. This is what
   prevents two requests — or two API replicas — from grabbing the same pod.
-- **`holderIdentity`** encodes ownership for debugging:
-  `instanceId:requestId:sessionId:toolCallId` (see
-  [src/ids.ts](src/ids.ts)). Annotations carry the same info for observability,
-  but they are never consulted for locking.
+- **`holderIdentity`** is `serviceInstanceId-<randomhex>` (6 random bytes), written into the Lease so you can identify which API instance owns a pod.
 - Inspect live state any time:
 
   ```bash
@@ -318,8 +261,13 @@ while waiters are queued, so recovery happens without needing a new release even
 With 8 pods, the 9th simultaneous tool call must wait for a pod (or time out):
 
 ```bash
-# API running + cluster up:
-N=9 bash scripts/load-9.sh
+# API running + cluster up — send 9 concurrent requests:
+for i in $(seq 1 9); do
+  curl -s -X POST localhost:3000/chat \
+    -H 'Content-Type: application/json' \
+    -d "{\"sessionId\":\"s$i\",\"message\":\"Run whoami.\"}" &
+done
+wait
 ```
 
 Watch the API logs: you'll see eight `sandbox.lease.acquired`, one
@@ -333,57 +281,22 @@ test).
 
 ---
 
-## Tools
+## Tool
 
-All three run **inside a leased pod** via `pods/exec`:
+One tool runs **inside a leased pod** via `pods/exec`:
 
-| Tool | Purpose | Guards |
-| ---- | ------- | ------ |
-| `shell.run` | Run an allowlisted command (`pwd`, `ls`, `cat <path>`, `whoami`, `node --version`). | Command allowlist; argv is exec'd directly (no shell); path args validated; shell metacharacters rejected. |
-| `fs.read`   | Read a file from the allowed root (`/workspace`). | Path-traversal / absolute-escape rejected before touching the pod. |
-| `env.inspect` | Report pod name, namespace, working dir, user, runtime versions. | Fixed, non-user-controlled command. |
+| Tool | Purpose |
+| ---- | ------- |
+| `run_in_sandbox` | Execute any shell command inside the sandbox pod. Accepts `{ command, workdir? }`. The command runs via `sh -lc` in the configured working directory (default `/workspace`). Returns `stdout`, `stderr`, `exitCode`, `podName`, and `durationMs`. |
 
 ---
-
-## Tests
-
-```bash
-npm test                  # fast unit tests, no cluster needed (in-memory Lease backend)
-npm run test:integration  # real-cluster tests + Pi-backed smoke test
-```
-
-Unit tests model **real Kubernetes optimistic concurrency** with an in-memory
-backend (resourceVersion compare-and-swap → `ConflictError`), so concurrency,
-conflict, queueing, and expiry are all deterministic. Coverage maps to the
-assignment's required cases:
-
-| # | Requirement | Where |
-| - | ----------- | ----- |
-| 1 | Acquire a free pod | `leaseManager.test.ts` |
-| 2 | Release after success | `leaseManager.test.ts`, `tools.test.ts` |
-| 3 | Release after tool failure | `leaseManager.test.ts`, `tools.test.ts` |
-| 4 | Release after timeout | `leaseManager.test.ts`, `tools.test.ts` |
-| 5 | Two concurrent calls never share a pod | `leaseManager.test.ts` (+ real concurrency-pressure test) |
-| 6 | >8 concurrent calls queue | `leaseManager.test.ts`, integration |
-| 7 | Queued call runs when a pod frees | `leaseManager.test.ts`, integration |
-| 8 | Queued call fails after max wait | `leaseManager.test.ts` |
-| 9 | Expired Lease recovery | `leaseManager.test.ts` |
-| 10 | `/pods` reflects lease state | `poolState.test.ts`, integration |
-| 11 | Real Pi SDK chat triggers sandbox path | `pi.smoke.integration.test.ts` |
-
-The integration suite includes the **Pi-backed smoke test** that runs with real
-Pi credentials and exercises the sandbox tool-execution path. It skips itself
-(with a warning) if the cluster or key is absent.
 
 ---
 
 ## Security
 
-- **No arbitrary shell execution.** `shell.run` enforces a program allowlist and
-  execs argv arrays directly (never `sh -c`), so shell metacharacters can't
-  inject. `node` is restricted to `--version`.
-- **Path allowlist** for `fs.read` — traversal and absolute escapes rejected.
-- **Namespace-scoped RBAC** ([k8s/10-rbac.yaml](k8s/10-rbac.yaml)): a Role +
+- **Shell execution via `sh -lc`.** The `run_in_sandbox` tool passes the LLM-provided command string to `sh -lc` inside the pod. There is no command allowlist — the sandbox pod itself is the isolation boundary.
+- **Namespace-scoped RBAC** ([src/kubernetes/sandbox-pool.yaml](src/kubernetes/sandbox-pool.yaml)): a Role +
   RoleBinding granting only get/list/watch pods, create pods/exec, get pods/log,
   and get/list/watch/create/update/patch leases. **No cluster-admin, no
   cluster-wide permissions.**
