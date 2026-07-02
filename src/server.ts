@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import type { Agent } from "@mariozechner/pi-agent-core";
 
-import { chatWithAgent } from "./agent/pi-agent";
-import { renderDashboardHtml } from "./dashboard";
-import type { LeaseManager } from "./sandbox/lease-manager";
-import type { RuntimeTelemetry } from "./telemetry";
+import { chatWithAgent } from "./agent/pi-agent.js";
+import { renderDashboardHtml } from "./dashboard.js";
+import type { LeaseManager } from "./sandbox/lease-manager.js";
+import type { RuntimeTelemetry } from "./telemetry.js";
 
 interface ChatRequestBody {
     message?: string;

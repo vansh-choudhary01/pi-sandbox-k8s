@@ -1,8 +1,8 @@
 import { Type, type Static } from "@sinclair/typebox";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 
-import type { SandboxExecutor } from "../sandbox/executor";
-import type { LeaseAcquireContext } from "../telemetry";
+import type { SandboxExecutor } from "../sandbox/executor.js";
+import type { LeaseAcquireContext } from "../telemetry.js";
 
 /**
  * Schema describing the arguments the LLM may provide.

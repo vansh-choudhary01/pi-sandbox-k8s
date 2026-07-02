@@ -1,13 +1,13 @@
 import { serve } from "@hono/node-server";
 
-import { loadConfig, podNames } from "./config";
-import { createKubernetesClients } from "./kubernetes/client";
-import { K8sLeaseBackend } from "./sandbox/lease-backend";
-import { LeaseManager } from "./sandbox/lease-manager";
-import { SandboxExecutor } from "./sandbox/executor";
-import { createPiAgent } from "./agent/pi-agent";
-import { createServer } from "./server";
-import { RuntimeTelemetry } from "./telemetry";
+import { loadConfig, podNames } from "./config.js";
+import { createKubernetesClients } from "./kubernetes/client.js";
+import { K8sLeaseBackend } from "./sandbox/lease-backend.js";
+import { LeaseManager } from "./sandbox/lease-manager.js";
+import { SandboxExecutor } from "./sandbox/executor.js";
+import { createPiAgent } from "./agent/pi-agent.js";
+import { createServer } from "./server.js";
+import { RuntimeTelemetry } from "./telemetry.js";
 
 const config = loadConfig();
 const kubernetes = createKubernetesClients();

@@ -1,12 +1,12 @@
 import { Agent } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
 
-import type { SandboxExecutor } from "../sandbox/executor";
-import type { RuntimeTelemetry } from "../telemetry";
+import type { SandboxExecutor } from "../sandbox/executor.js";
+import type { RuntimeTelemetry } from "../telemetry.js";
 import {
     createSandboxCommandTool,
     type SandboxCommandDetails,
-} from "./tools";
+} from "./tools.js";
 
 export interface PiAgentOptions {
     provider: string;

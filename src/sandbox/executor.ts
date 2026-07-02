@@ -1,10 +1,10 @@
 import { PassThrough } from "node:stream";
 import type { Exec, V1Status } from "@kubernetes/client-node";
 
-import type { Config } from "../config";
-import type { LeaseManager } from "./lease-manager";
-import type { LeaseAcquireContext, RuntimeTelemetry } from "../telemetry";
-import type { AcquiredLease } from "./types";
+import type { Config } from "../config.js";
+import type { LeaseManager } from "./lease-manager.js";
+import type { LeaseAcquireContext, RuntimeTelemetry } from "../telemetry.js";
+import type { AcquiredLease } from "./types.js";
 
 /**
  * Input accepted by the sandbox executor.

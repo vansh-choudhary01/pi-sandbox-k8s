@@ -8,7 +8,7 @@ import {
   NotFoundError,
   type LeaseBackend,
   type LeaseRecord,
-} from "./types";
+} from "./types.js";
 
 /**
  * Stores sandbox locks as Kubernetes Lease objects.

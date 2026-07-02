@@ -1,4 +1,4 @@
-import type { LeaseRecord } from "./sandbox/types";
+import type { LeaseRecord } from "./sandbox/types.js";
 
 export type RuntimeEventType =
   | "request_started"

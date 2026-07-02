@@ -6,12 +6,12 @@ import {
   type AcquiredLease,
   type LeaseBackend,
   type LeaseRecord,
-} from "./types";
+} from "./types.js";
 import type {
   LeaseAcquireContext,
   QueueSnapshot,
   RuntimeTelemetry,
-} from "../telemetry";
+} from "../telemetry.js";
 
 export interface LeaseManagerOptions {
   /** Stable names of all sandbox pods in the pool. */
