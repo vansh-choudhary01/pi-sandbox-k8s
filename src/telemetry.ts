@@ -420,6 +420,16 @@ export class RuntimeTelemetry {
     }
   }
 
+  reset(): void {
+    this.events.length = 0;
+    this.requests.clear();
+    this.tools.clear();
+    this.nextEventId = 1;
+    for (const podName of this.podNames) {
+      this.podRuntime.set(podName, { podName, status: "unknown" });
+    }
+  }
+
   snapshot(sinceEventId = 0): {
     events: RuntimeEvent[];
     snapshot: {

@@ -5,6 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "node --import tsx src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
     "pods": "kubectl apply -f src/kubernetes/sandbox-pool.yaml",
     "create-cluster": "kind create cluster --name pi-sandbox-cluster --wait 5m --retain -v 6",
     "delete-cluster": "kind delete cluster --name pi-sandbox-cluster"

@@ -78,7 +78,7 @@ or a real Kubernetes cluster in production.
 - **Node.js ≥ 20**
 - **Docker** (running)
 - **kind** (`brew install kind`) and **kubectl**
-- An **Anthropic API key** for the Pi SDK (see below)
+- A **Gemini API key** (`GEMINI_API_KEY`)
 
 ---
 
@@ -96,15 +96,17 @@ npm run pods
 
 # 4. Configure your Pi credential
 cp .env.example .env
-#   then edit .env and set ANTHROPIC_API_KEY=sk-ant-...
+#   then edit .env and set GEMINI_API_KEY=your-gemini-api-key
 
 # 5. Run the API locally (it talks to the kind cluster via your kubeconfig)
-npm run dev
+npm run dev        # development (tsx, no build step)
+npm run build      # compile to dist/
+npm start          # run compiled dist/index.js
 
 # 6. In another terminal
 curl localhost:3000/health
 curl -s -X POST localhost:3000/chat -H 'Content-Type: application/json' \
-  -d '{"sessionId":"s1","message":"List the files in the sandbox."}' | jq
+  -d '{"message":"List the files in the sandbox."}' | jq
 ```
 
 ### How to create the local Kubernetes cluster
@@ -149,7 +151,9 @@ The simplest path runs the API **on your machine** against the kind cluster
 pods is needed):
 
 ```bash
-npm run dev
+npm run dev        # development with tsx, no build step needed
+npm run build      # compile TypeScript to dist/
+npm start          # run compiled output (dist/index.js)
 ```
 
 ---
@@ -186,8 +190,9 @@ curl -s -X POST localhost:3000/chat \
 | ------ | ----------------- | ----------- |
 | POST   | `/chat`           | Runs a chat turn. Accepts `{ message }`, generates a `requestId`, routes every tool call through the lease manager, returns `{ requestId, answer, tools }`. |
 | GET    | `/api/telemetry`  | Live snapshot: pod lease states, queue depth, tracked requests, tool runs, and a rolling event log. Accepts `?since=<eventId>` for incremental polling. |
+| POST   | `/api/reset`      | Clears all in-memory telemetry (events, requests, tools, pod state). Called automatically on dashboard load. |
 | GET    | `/health`         | `{ status: "ok" }` |
-| GET    | `/`               | Live HTML dashboard (auto-polls `/api/telemetry` every 700 ms). |
+| GET    | `/`               | Live HTML dashboard (auto-polls `/api/telemetry` every 150 ms). |
 
 ---
 
@@ -201,7 +206,7 @@ is the lock source of truth.
   (no holder, or expired), and `PUT`s it back with our `holderIdentity` **and the
   observed `resourceVersion`**. If another writer changed it first, the API
   server returns **HTTP 409**; we treat that as a lost race
-  ([ConflictError](src/k8s/types.ts)) and try a different lease. This is what
+  ([ConflictError](src/sandbox/types.ts)) and try a different lease. This is what
   prevents two requests — or two API replicas — from grabbing the same pod.
 - **`holderIdentity`** is `serviceInstanceId-<randomhex>` (6 random bytes), written into the Lease so you can identify which API instance owns a pod.
 - Inspect live state any time:
@@ -216,7 +221,7 @@ is the lock source of truth.
 ## The FIFO queue & max wait
 
 When all 8 leases are held, callers wait in a **process-local FIFO queue**
-([src/sandbox/leaseManager.ts](src/sandbox/leaseManager.ts)):
+([src/sandbox/lease-manager.ts](src/sandbox/lease-manager.ts)):
 
 1. The queue is process-local (one API replica for this assignment).
 2. It is FIFO — the oldest waiter is always served first.
@@ -244,7 +249,7 @@ replicas. See [Production notes](#production-notes) for what changes at scale.
 
 The lease is **released on every exit path** — success, tool failure, tool
 timeout, client cancellation, and unexpected error — via the `finally` block in
-[runInSandbox.ts](src/tools/runInSandbox.ts). Release is also **defensive**: it
+[src/sandbox/executor.ts](src/sandbox/executor.ts). Release is also **defensive**: it
 only clears the lease if we are still the recorded holder, so it never clobbers a
 pod that was already reclaimed.
 
@@ -265,19 +270,14 @@ With 8 pods, the 9th simultaneous tool call must wait for a pod (or time out):
 for i in $(seq 1 9); do
   curl -s -X POST localhost:3000/chat \
     -H 'Content-Type: application/json' \
-    -d "{\"sessionId\":\"s$i\",\"message\":\"Run whoami.\"}" &
+    -d "{\"message\":\"Run whoami.\"}" &
 done
 wait
 ```
 
-Watch the API logs: you'll see eight `sandbox.lease.acquired`, one
-`sandbox.queue.wait_started` that stays pending, then either a
-`sandbox.queue.wait_completed` (a pod freed within 15s) or a
-`sandbox.queue.wait_timed_out` → HTTP 429 `sandbox_capacity_timeout`.
-
-This exact scenario is covered by the automated tests
-(`leaseManager.test.ts` "more than 8 concurrent" + the real-cluster integration
-test).
+Watch the API logs: you'll see eight pods go `busy`, one
+`sandbox.queue.wait_started` that stays pending, then either the 9th acquires
+a pod once one frees or it times out after 15s.
 
 ---
 

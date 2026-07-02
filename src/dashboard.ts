@@ -494,7 +494,12 @@ export function renderDashboardHtml(): string {
               <span class="label" id="request-state">Ready</span>
             </div>
             <form class="chat" id="chat-form">
-              <textarea id="message" placeholder="Ask something that may need a sandbox command...">Run a quick command in the sandbox to print the current directory and list files.</textarea>
+              <textarea id="message" placeholder="Ask something that may need a sandbox command...">Execute the following commands parllaly using the sandbox tool. Treat each command as a separate tool invocation rather than combining them.
+
+1. pwd && ls && sleep 5
+2. pwd && ls && sleep 5
+...
+10. pwd && ls && sleep 5</textarea>
               <div class="actions">
                 <span class="label">POST /chat</span>
                 <button id="send-button" type="submit">Send</button>
@@ -756,8 +761,8 @@ export function renderDashboardHtml(): string {
       }
     });
 
-    poll();
-    setInterval(poll, 700);
+    fetch("/api/reset", { method: "POST" }).then(function() { poll(); });
+    setInterval(poll, 150);
   </script>
 </body>
 </html>`;

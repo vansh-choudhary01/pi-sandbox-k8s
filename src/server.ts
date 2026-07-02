@@ -60,6 +60,12 @@ export function createServer(
         );
     });
 
+    app.post("/api/reset", (context) => {
+        if (!runtime) return context.json({ error: "no runtime" }, 503);
+        runtime.telemetry.reset();
+        return context.json({ ok: true });
+    });
+
     app.post("/chat", async (context) => {
         const requestId = randomUUID();
         const startedAt = Date.now();
