@@ -4,53 +4,70 @@ export function renderDashboardHtml(): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pi Sandbox Kubernetes Runtime — Dashboard</title>
+  <title>Pi Sandbox Kubernetes Runtime - Dashboard</title>
   <style>
     :root {
       color-scheme: light;
-      --ink: #18201f;
-      --muted: #65706e;
-      --line: #d9dfdc;
-      --paper: #f7f8f5;
+      --ink: #111111;
+      --muted: #5c5c5c;
+      --line: #dedede;
+      --paper: #f7f7f5;
       --panel: #ffffff;
-      --teal: #14877c;
-      --mint: #d8f3e6;
-      --amber: #b97913;
-      --amber-soft: #fff0cf;
-      --red: #b94747;
-      --red-soft: #ffe3df;
-      --violet: #6954b8;
-      --cyan: #daf4f5;
-      --shadow: 0 16px 50px rgba(24, 32, 31, 0.1);
+      --soft: #eeeeec;
+      --soft-strong: #e2e2df;
+      --inverse: #ffffff;
+      --accent: #2563eb;
+      --accent-soft: #dbeafe;
+      --accent-strong: #1d4ed8;
+      --success: #0f8a5f;
+      --success-soft: #dff7ea;
+      --warning: #b7791f;
+      --warning-soft: #fff3d6;
+      --danger: #b42318;
+      --danger-soft: #fee4e2;
+      --violet: #6d5bd0;
+      --violet-soft: #ece9ff;
+      --button-bg: var(--accent);
+      --button-text: #ffffff;
+      --button-hover: var(--accent-strong);
+      --shadow: 0 18px 54px rgba(37, 99, 235, 0.11);
     }
 
     [data-theme="dark"] {
       color-scheme: dark;
-      --ink: #e8efed;
-      --muted: #8fa39f;
-      --line: #2a3533;
-      --paper: #0f1614;
-      --panel: #161e1c;
-      --teal: #2dd4bf;
-      --mint: #0d2e28;
-      --amber: #f59e0b;
-      --amber-soft: #2a1f06;
-      --red: #f87171;
-      --red-soft: #2a1010;
+      --ink: #f4f4f4;
+      --muted: #aaaaaa;
+      --line: #303030;
+      --paper: #070707;
+      --panel: #111111;
+      --soft: #1b1b1b;
+      --soft-strong: #282828;
+      --inverse: #070707;
+      --accent: #60a5fa;
+      --accent-soft: #10243f;
+      --accent-strong: #93c5fd;
+      --success: #34d399;
+      --success-soft: #0f2f24;
+      --warning: #fbbf24;
+      --warning-soft: #35270a;
+      --danger: #fb7185;
+      --danger-soft: #3a1119;
       --violet: #a78bfa;
-      --cyan: #0a2a2e;
-      --shadow: 0 16px 50px rgba(0, 0, 0, 0.45);
+      --violet-soft: #251b3f;
+      --button-bg: var(--accent);
+      --button-text: #07111f;
+      --button-hover: var(--accent-strong);
+      --shadow: 0 18px 54px rgba(96, 165, 250, 0.14);
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
       min-height: 100vh;
       background:
-        linear-gradient(180deg, rgba(216, 243, 230, 0.75), rgba(247, 248, 245, 0.42) 280px),
+        linear-gradient(180deg, rgba(37, 99, 235, 0.12), transparent 290px),
+        radial-gradient(circle at 85% 0%, rgba(109, 91, 208, 0.12), transparent 360px),
         var(--paper);
       color: var(--ink);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -60,7 +77,8 @@ export function renderDashboardHtml(): string {
 
     [data-theme="dark"] body {
       background:
-        linear-gradient(180deg, rgba(13, 46, 40, 0.8), rgba(15, 22, 20, 0.3) 280px),
+        linear-gradient(180deg, rgba(96, 165, 250, 0.15), transparent 290px),
+        radial-gradient(circle at 85% 0%, rgba(167, 139, 250, 0.16), transparent 360px),
         var(--paper);
     }
 
@@ -91,64 +109,69 @@ export function renderDashboardHtml(): string {
     }
 
     .subtitle {
-      margin: 10px 0 0;
       max-width: 760px;
+      margin: 10px 0 0;
       color: var(--muted);
       font-size: 15px;
       line-height: 1.5;
     }
 
-    .status-pill {
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .status-pill,
+    .theme-btn {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      min-height: 36px;
-      padding: 0 12px;
+      min-height: 38px;
       border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.78);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.82);
       color: var(--muted);
       white-space: nowrap;
     }
 
-    [data-theme="dark"] .status-pill {
-      background: rgba(22, 30, 28, 0.85);
+    [data-theme="dark"] .status-pill,
+    [data-theme="dark"] .theme-btn {
+      background: rgba(17, 17, 17, 0.86);
+    }
+
+    .status-pill {
+      gap: 8px;
+      padding: 0 12px;
     }
 
     .theme-btn {
-      display: inline-flex;
-      align-items: center;
       justify-content: center;
-      width: 40px;
-      height: 40px;
+      width: 38px;
       padding: 0;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.78);
       color: var(--ink);
-      font-size: 18px;
       cursor: pointer;
-      font-weight: 400;
+      font-size: 12px;
+      font-weight: 800;
       transition: background 0.2s, border-color 0.2s, transform 0.15s;
-      flex-shrink: 0;
     }
 
     .theme-btn:hover {
-      background: var(--mint);
-      border-color: var(--teal);
-      transform: scale(1.08);
-    }
-
-    [data-theme="dark"] .theme-btn {
-      background: rgba(22, 30, 28, 0.85);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      transform: translateY(-1px);
     }
 
     .dot {
       width: 9px;
       height: 9px;
-      border-radius: 50%;
-      background: var(--teal);
-      box-shadow: 0 0 0 4px rgba(20, 135, 124, 0.15);
+      border-radius: 999px;
+      background: var(--success);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 18%, transparent);
+    }
+
+    [data-theme="dark"] .dot {
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 20%, transparent);
     }
 
     .metrics {
@@ -163,13 +186,29 @@ export function renderDashboardHtml(): string {
       padding: 18px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(255, 255, 255, 0.82);
-      box-shadow: 0 8px 26px rgba(24, 32, 31, 0.06);
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 8px 26px rgba(0, 0, 0, 0.055);
       transition: background 0.25s;
+      position: relative;
+      overflow: hidden;
     }
 
+    .metric::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--accent);
+    }
+
+    .metric:nth-child(2)::before { background: var(--violet); }
+    .metric:nth-child(3)::before { background: var(--warning); }
+    .metric:nth-child(4)::before { background: var(--success); }
+
     [data-theme="dark"] .metric {
-      background: rgba(22, 30, 28, 0.9);
+      background: rgba(17, 17, 17, 0.9);
     }
 
     .metric span,
@@ -177,7 +216,7 @@ export function renderDashboardHtml(): string {
       display: block;
       color: var(--muted);
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 800;
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
@@ -197,32 +236,32 @@ export function renderDashboardHtml(): string {
     }
 
     .panel {
+      overflow: hidden;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.92);
       box-shadow: var(--shadow);
-      overflow: hidden;
       transition: background 0.25s, border-color 0.25s;
     }
 
     [data-theme="dark"] .panel {
-      background: rgba(22, 30, 28, 0.92);
+      background: rgba(17, 17, 17, 0.94);
     }
 
     .panel-header {
       display: flex;
+      min-height: 56px;
+      align-items: center;
       justify-content: space-between;
       gap: 14px;
-      align-items: center;
-      min-height: 56px;
       padding: 14px 16px;
       border-bottom: 1px solid var(--line);
-      background: rgba(247, 248, 245, 0.9);
+      background: rgba(247, 247, 245, 0.94);
       transition: background 0.25s;
     }
 
     [data-theme="dark"] .panel-header {
-      background: rgba(18, 26, 24, 0.95);
+      background: rgba(13, 13, 13, 0.98);
     }
 
     .panel-header h2 {
@@ -244,34 +283,30 @@ export function renderDashboardHtml(): string {
     }
 
     .pod {
+      position: relative;
       min-height: 154px;
+      overflow: hidden;
       padding: 14px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--panel);
-      position: relative;
-      overflow: hidden;
     }
 
     .pod.busy {
-      border-color: rgba(20, 135, 124, 0.45);
-      background: linear-gradient(180deg, #ffffff, var(--mint));
+      border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+      background: linear-gradient(180deg, var(--panel), var(--accent-soft));
     }
 
     .pod.expired {
-      border-color: rgba(185, 121, 19, 0.45);
-      background: linear-gradient(180deg, #ffffff, var(--amber-soft));
-    }
-
-    .pod.free {
-      background: var(--panel);
+      border-color: color-mix(in srgb, var(--warning) 58%, var(--line));
+      background: repeating-linear-gradient(135deg, var(--panel) 0 10px, var(--warning-soft) 10px 20px);
     }
 
     .pod-name {
       display: flex;
+      align-items: center;
       justify-content: space-between;
       gap: 8px;
-      align-items: center;
       font-weight: 800;
       word-break: break-word;
     }
@@ -283,8 +318,9 @@ export function renderDashboardHtml(): string {
       min-width: 58px;
       min-height: 24px;
       padding: 3px 8px;
+      border: 1px solid var(--line);
       border-radius: 999px;
-      background: #eef1ee;
+      background: var(--soft);
       color: var(--muted);
       font-size: 12px;
       font-weight: 800;
@@ -292,33 +328,37 @@ export function renderDashboardHtml(): string {
     }
 
     .busy .badge,
-    .running {
-      background: var(--mint);
-      color: var(--teal);
+    .running,
+    .started {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent-strong);
     }
 
     .failed,
     .expired .badge {
-      background: var(--red-soft);
-      color: var(--red);
+      border-color: var(--danger);
+      background: var(--danger-soft);
+      color: var(--danger);
     }
 
     .completed,
     .released {
-      background: var(--cyan);
-      color: #176c72;
+      border-color: var(--success);
+      background: var(--success-soft);
+      color: var(--success);
     }
 
-    .waiting,
-    .started {
-      background: var(--amber-soft);
-      color: var(--amber);
+    .waiting {
+      border-color: var(--warning);
+      background: var(--warning-soft);
+      color: var(--warning);
     }
 
     .meta {
-      margin-top: 12px;
       display: grid;
       gap: 8px;
+      margin-top: 12px;
       color: var(--muted);
       font-size: 13px;
       line-height: 1.35;
@@ -342,12 +382,12 @@ export function renderDashboardHtml(): string {
       padding: 12px;
       border: 1px dashed var(--line);
       border-radius: 8px;
-      background: rgba(247, 248, 245, 0.72);
+      background: rgba(247, 247, 245, 0.74);
       transition: background 0.25s;
     }
 
     [data-theme="dark"] .lane {
-      background: rgba(18, 26, 24, 0.6);
+      background: rgba(13, 13, 13, 0.68);
     }
 
     .lane h3 {
@@ -356,11 +396,11 @@ export function renderDashboardHtml(): string {
     }
 
     .item {
+      margin-top: 8px;
       padding: 10px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--panel);
-      margin-top: 8px;
     }
 
     .workspace {
@@ -382,38 +422,43 @@ export function renderDashboardHtml(): string {
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 13px;
-      color: var(--ink);
       background: var(--panel);
+      color: var(--ink);
       outline: none;
-      transition: background 0.25s, border-color 0.2s;
+      transition: background 0.25s, border-color 0.2s, box-shadow 0.2s;
     }
 
     textarea:focus {
-      border-color: var(--teal);
-      box-shadow: 0 0 0 4px rgba(20, 135, 124, 0.14);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+    }
+
+    [data-theme="dark"] textarea:focus {
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
     }
 
     .actions {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
       gap: 12px;
     }
 
     button {
       min-height: 40px;
       padding: 0 16px;
-      border: 0;
+      border: 1px solid var(--button-bg);
       border-radius: 8px;
-      background: var(--ink);
-      color: #fff;
-      font-weight: 800;
+      background: var(--button-bg);
+      color: var(--button-text);
       cursor: pointer;
+      font-weight: 800;
     }
 
-    [data-theme="dark"] #send-button {
-      background: var(--teal);
-      color: #0a100e;
+    button:hover:not(:disabled) {
+      border-color: var(--button-hover);
+      background: var(--button-hover);
+      color: var(--button-text);
     }
 
     button:disabled {
@@ -480,8 +525,12 @@ export function renderDashboardHtml(): string {
       grid-template-columns: 82px minmax(0, 1fr);
       gap: 10px;
       padding: 9px 16px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
       font-size: 13px;
-      border-bottom: 1px solid rgba(217, 223, 220, 0.65);
+    }
+
+    [data-theme="dark"] .event {
+      border-bottom-color: rgba(255, 255, 255, 0.1);
     }
 
     .event-time {
@@ -531,7 +580,7 @@ export function renderDashboardHtml(): string {
         <h1>Pi Sandbox Runtime</h1>
         <p class="subtitle">LLM-powered agent with Kubernetes-leased sandbox execution. Live view of chat requests, tool calls, Lease queueing, pod usage, and release events.</p>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;flex-shrink:0">
+      <div class="top-actions">
         <button class="theme-btn" id="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
         <div class="status-pill"><span class="dot"></span><span id="poll-status">Connecting</span></div>
       </div>
@@ -729,7 +778,7 @@ export function renderDashboardHtml(): string {
         var output = tool.stdout ? '<div class="row-sub mono">stdout: ' + escapeHtml(short(tool.stdout.trim(), 130)) + '</div>' : "";
         var error = tool.stderr || tool.error ? '<div class="row-sub mono">error: ' + escapeHtml(short(tool.stderr || tool.error, 130)) + '</div>' : "";
         var pod = tool.podName ? "Pod " + tool.podName : "No pod yet";
-        var duration = tool.durationMs ? " · " + tool.durationMs + "ms" : "";
+        var duration = tool.durationMs ? " / " + tool.durationMs + "ms" : "";
         return '<div class="row">' +
           '<div>' +
           '<div class="row-title">' + escapeHtml(tool.toolName) + '</div>' +
@@ -751,7 +800,7 @@ export function renderDashboardHtml(): string {
 
       els.requests.innerHTML = requests.map(function (request) {
         var response = request.answer || request.error || "";
-        var duration = request.durationMs ? " · " + request.durationMs + "ms" : "";
+        var duration = request.durationMs ? " / " + request.durationMs + "ms" : "";
         return '<div class="row">' +
           '<div>' +
           '<div class="row-title mono">' + escapeHtml(request.id) + '</div>' +
@@ -779,7 +828,7 @@ export function renderDashboardHtml(): string {
         return '<div class="event">' +
           '<div class="event-time">' + escapeHtml(time(event.at)) + '</div>' +
           '<div><b>' + escapeHtml(event.message) + '</b>' +
-          (parts.length ? '<div class="row-sub mono">' + escapeHtml(parts.join(" · ")) + '</div>' : "") +
+          (parts.length ? '<div class="row-sub mono">' + escapeHtml(parts.join(" / ")) + '</div>' : "") +
           '</div>' +
           '</div>';
       }).join("");
