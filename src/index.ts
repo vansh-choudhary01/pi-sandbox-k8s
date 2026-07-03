@@ -41,12 +41,6 @@ if (!apiKey) {
   throw new Error("Missing GEMINI_API_KEY");
 }
 
-/**
- * Agent factory used by the HTTP server.
- *
- * The expensive Kubernetes clients and sandbox executor are shared,
- * but mutable conversation history is isolated per request.
- */
 const createAgent = (requestId: string) =>
   createPiAgent(sandboxExecutor, {
     provider: process.env.PI_PROVIDER ?? "google",
@@ -61,15 +55,12 @@ const app = createServer(createAgent, {
   telemetry,
 });
 
-/**
- * Start the HTTP server only after Kubernetes clients and Lease objects
- * are ready, so requests cannot arrive during incomplete initialization.
- */
 serve({
   fetch: app.fetch,
   port: config.port,
 });
 
 console.log(`Server running at http://localhost:${config.port}`);
-console.log(`Dashboard http://localhost:${config.port}/`);
-console.log(`POST http://localhost:${config.port}/chat`);
+console.log(`Homepage  http://localhost:${config.port}/`);
+console.log(`Dashboard http://localhost:${config.port}/dashboard`);
+console.log(`POST      http://localhost:${config.port}/chat`);

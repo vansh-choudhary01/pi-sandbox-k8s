@@ -4,6 +4,7 @@ import type { Agent } from "@mariozechner/pi-agent-core";
 
 import { chatWithAgent } from "./agent/pi-agent.js";
 import { renderDashboardHtml } from "./dashboard.js";
+import { renderHomepageHtml } from "./homepage.js";
 import type { LeaseManager } from "./sandbox/lease-manager.js";
 import type { RuntimeTelemetry } from "./telemetry.js";
 
@@ -32,6 +33,10 @@ export function createServer(
     const app = new Hono();
 
     app.get("/", (context) => {
+        return context.html(renderHomepageHtml());
+    });
+
+    app.get("/dashboard", (context) => {
         return context.html(renderDashboardHtml());
     });
 

@@ -4,7 +4,7 @@ export function renderDashboardHtml(): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Super 30 Runtime</title>
+  <title>Pi Sandbox Kubernetes Runtime — Dashboard</title>
   <style>
     :root {
       color-scheme: light;
@@ -24,6 +24,24 @@ export function renderDashboardHtml(): string {
       --shadow: 0 16px 50px rgba(24, 32, 31, 0.1);
     }
 
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --ink: #e8efed;
+      --muted: #8fa39f;
+      --line: #2a3533;
+      --paper: #0f1614;
+      --panel: #161e1c;
+      --teal: #2dd4bf;
+      --mint: #0d2e28;
+      --amber: #f59e0b;
+      --amber-soft: #2a1f06;
+      --red: #f87171;
+      --red-soft: #2a1010;
+      --violet: #a78bfa;
+      --cyan: #0a2a2e;
+      --shadow: 0 16px 50px rgba(0, 0, 0, 0.45);
+    }
+
     * {
       box-sizing: border-box;
     }
@@ -37,6 +55,13 @@ export function renderDashboardHtml(): string {
       color: var(--ink);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       letter-spacing: 0;
+      transition: background 0.25s, color 0.25s;
+    }
+
+    [data-theme="dark"] body {
+      background:
+        linear-gradient(180deg, rgba(13, 46, 40, 0.8), rgba(15, 22, 20, 0.3) 280px),
+        var(--paper);
     }
 
     button,
@@ -86,6 +111,38 @@ export function renderDashboardHtml(): string {
       white-space: nowrap;
     }
 
+    [data-theme="dark"] .status-pill {
+      background: rgba(22, 30, 28, 0.85);
+    }
+
+    .theme-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--ink);
+      font-size: 18px;
+      cursor: pointer;
+      font-weight: 400;
+      transition: background 0.2s, border-color 0.2s, transform 0.15s;
+      flex-shrink: 0;
+    }
+
+    .theme-btn:hover {
+      background: var(--mint);
+      border-color: var(--teal);
+      transform: scale(1.08);
+    }
+
+    [data-theme="dark"] .theme-btn {
+      background: rgba(22, 30, 28, 0.85);
+    }
+
     .dot {
       width: 9px;
       height: 9px;
@@ -108,6 +165,11 @@ export function renderDashboardHtml(): string {
       border-radius: 8px;
       background: rgba(255, 255, 255, 0.82);
       box-shadow: 0 8px 26px rgba(24, 32, 31, 0.06);
+      transition: background 0.25s;
+    }
+
+    [data-theme="dark"] .metric {
+      background: rgba(22, 30, 28, 0.9);
     }
 
     .metric span,
@@ -140,6 +202,11 @@ export function renderDashboardHtml(): string {
       background: rgba(255, 255, 255, 0.9);
       box-shadow: var(--shadow);
       overflow: hidden;
+      transition: background 0.25s, border-color 0.25s;
+    }
+
+    [data-theme="dark"] .panel {
+      background: rgba(22, 30, 28, 0.92);
     }
 
     .panel-header {
@@ -151,6 +218,11 @@ export function renderDashboardHtml(): string {
       padding: 14px 16px;
       border-bottom: 1px solid var(--line);
       background: rgba(247, 248, 245, 0.9);
+      transition: background 0.25s;
+    }
+
+    [data-theme="dark"] .panel-header {
+      background: rgba(18, 26, 24, 0.95);
     }
 
     .panel-header h2 {
@@ -192,7 +264,7 @@ export function renderDashboardHtml(): string {
     }
 
     .pod.free {
-      background: #ffffff;
+      background: var(--panel);
     }
 
     .pod-name {
@@ -271,6 +343,11 @@ export function renderDashboardHtml(): string {
       border: 1px dashed var(--line);
       border-radius: 8px;
       background: rgba(247, 248, 245, 0.72);
+      transition: background 0.25s;
+    }
+
+    [data-theme="dark"] .lane {
+      background: rgba(18, 26, 24, 0.6);
     }
 
     .lane h3 {
@@ -282,7 +359,7 @@ export function renderDashboardHtml(): string {
       padding: 10px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: #fff;
+      background: var(--panel);
       margin-top: 8px;
     }
 
@@ -306,8 +383,9 @@ export function renderDashboardHtml(): string {
       border-radius: 8px;
       padding: 13px;
       color: var(--ink);
-      background: #fff;
+      background: var(--panel);
       outline: none;
+      transition: background 0.25s, border-color 0.2s;
     }
 
     textarea:focus {
@@ -333,6 +411,11 @@ export function renderDashboardHtml(): string {
       cursor: pointer;
     }
 
+    [data-theme="dark"] #send-button {
+      background: var(--teal);
+      color: #0a100e;
+    }
+
     button:disabled {
       cursor: wait;
       opacity: 0.58;
@@ -353,7 +436,7 @@ export function renderDashboardHtml(): string {
       overflow: auto;
       padding: 14px;
       border-top: 1px solid var(--line);
-      background: #fbfcfa;
+      background: var(--paper);
     }
 
     .list {
@@ -445,10 +528,13 @@ export function renderDashboardHtml(): string {
   <main class="shell">
     <header>
       <div>
-        <h1>Super 30 Runtime</h1>
-        <p class="subtitle">Live view of chat requests, Pi tool calls, Kubernetes Lease queueing, sandbox pod usage, command output, and release events.</p>
+        <h1>Pi Sandbox Runtime</h1>
+        <p class="subtitle">LLM-powered agent with Kubernetes-leased sandbox execution. Live view of chat requests, tool calls, Lease queueing, pod usage, and release events.</p>
       </div>
-      <div class="status-pill"><span class="dot"></span><span id="poll-status">Connecting</span></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-shrink:0">
+        <button class="theme-btn" id="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
+        <div class="status-pill"><span class="dot"></span><span id="poll-status">Connecting</span></div>
+      </div>
     </header>
 
     <section class="metrics">
@@ -758,6 +844,27 @@ export function renderDashboardHtml(): string {
         isSending = false;
         els.sendButton.disabled = false;
         poll();
+      }
+    });
+
+    (function() {
+      var saved = localStorage.getItem("theme");
+      var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var isDark = saved ? saved === "dark" : prefersDark;
+      if (isDark) document.documentElement.setAttribute("data-theme", "dark");
+      document.getElementById("theme-toggle").textContent = isDark ? "☀️" : "🌙";
+    })();
+
+    document.getElementById("theme-toggle").addEventListener("click", function() {
+      var isDark = document.documentElement.getAttribute("data-theme") === "dark";
+      if (isDark) {
+        document.documentElement.removeAttribute("data-theme");
+        localStorage.setItem("theme", "light");
+        this.textContent = "🌙";
+      } else {
+        document.documentElement.setAttribute("data-theme", "dark");
+        localStorage.setItem("theme", "dark");
+        this.textContent = "☀️";
       }
     });
 
