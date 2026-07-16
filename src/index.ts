@@ -1,3 +1,9 @@
+import { setMaxListeners } from "node:events";
+
+// Each kubernetes exec() call attaches abort listeners to a shared AbortSignal.
+// Raise the limit to pool size + generous headroom to suppress the warning.
+setMaxListeners(32);
+
 import { serve } from "@hono/node-server";
 
 import { loadConfig, podNames } from "./config.js";
