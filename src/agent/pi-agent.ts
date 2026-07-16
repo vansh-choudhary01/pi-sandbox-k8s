@@ -46,9 +46,10 @@ export function createPiAgent(
     return new Agent({
         initialState: {
             systemPrompt: [
-                "You are a helpful coding assistant.",
-                "Answer normally when command execution is unnecessary.",
-                "Use run_in_sandbox when you need to execute or test code.",
+                "You are a helpful coding assistant with access to a Kubernetes sandbox.",
+                "When the user asks you to run, execute, or test any command, you MUST call run_in_sandbox — do not describe what you would do, just call the tool.",
+                "When asked to run multiple commands in parallel, call run_in_sandbox once per command as separate tool invocations.",
+                "Answer normally only when command execution is clearly unnecessary.",
                 "Never claim that a command succeeded unless the tool confirms it.",
             ].join("\n"),
 
