@@ -150,8 +150,16 @@ export async function chatWithAgent(
         .join("")
         .trim();
 
-    return {
-        answer,
-        tools: [...traces.values()],
-    };
+    const tools = [...traces.values()];
+
+    if (tools.length === 0) {
+        console.warn(`[Agent] No tool calls for request ${trace?.requestId ?? "unknown"}: "${message.slice(0, 120)}"`)
+    }
+
+    const failedTools = tools.filter(t => t.isError);
+    if (failedTools.length > 0) {
+        console.warn(`[Agent] ${failedTools.length} tool(s) failed for request ${trace?.requestId ?? "unknown"}: ${failedTools.map(t => t.toolName).join(", ")}`);
+    }
+
+    return { answer, tools };
 }
